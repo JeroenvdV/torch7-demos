@@ -37,7 +37,6 @@ cmd:option('-nHL',       1,       '# of hidden layers')
 cmd:option('-K',         2,       '# of output classes')
 cmd:option('-T',         4,       'Length of search sequence (abba -> 4)')
 cmd:option('-trainSize', 10000,   'Size of training data')
-cmd:option('-targetTrainSize', 10000,   'Size of \'target\' training data')
 cmd:option('-testSize',  150,     'Sive of testing data')
 cmd:option('-mode',     'RNN',    'RNN type [RNN|GRU|FW]')
 cmd:option('-lr',        2e-2,    'Learning rate')
@@ -55,13 +54,19 @@ local nHL = opt.nHL
 local K   = opt.K
 local T   = opt.T
 local trainSize = opt.trainSize
-local targetTrainSize = opt.targetTrainSize
 local testSize  = opt.testSize
 local mode = opt.mode
 local lr   = opt.lr
 local lrd  = opt.lrd
 local optimState = {learningRate = lr, alpha = lrd}
 
+--------------------------------------------------------------------------------
+-- x : Inputs => Dimension : trainSize x n
+-- y : Labels => Dimension : trainSize
+local x, y = data.getData(trainSize, T, n, nt)
+print('First bit of training data and labels:')
+print(x[{ {1, 200}, {} }])
+print(y[{ {1, 200} }])
 --------------------------------------------------------------------------------
 -- Get the model which is unrolled in time
 local model, prototype = network.getModel(nt, d, nHL, K, T, mode)
@@ -83,20 +88,10 @@ for l = 1, nHL do
    end
 end
 
-
---------------------------------------------------------------------------------
--- x : Inputs => Dimension : trainSize x n
--- y : Labels => Dimension : trainSize
-local x, y = data.getData(trainSize, T, n, nt, 2) -- abb
-print('First bit of training data and labels:')
-print(x[{ {1, math.min(200,trainSize)}, {} }])
-print(y[{ {1, math.min(200,trainSize)} }])
-
-
 print(green .. 'Training ' .. mode .. ' model' .. rc)
 
 -- Saving the graphs with input dimension information
-model:forward({x[{ {1, T}, {} }], table.unpack(h)})
+model:forward({x[{ {1, 4}, {} }], table.unpack(h)})
 prototype:forward({x[1], table.unpack(h)})
 
 if not paths.dirp('graphs') then paths.mkdir('graphs') end
@@ -176,69 +171,6 @@ for itr = 1, trainSize - T, T do
                            itr, err[1] / T, dE_dw:norm()))
    end
 end
-
-
-
-
---------------------------------------------------------------------------------
--- x : Inputs => Dimension : trainSize x n
--- y : Labels => Dimension : trainSize
-local x, y = data.getData(targetTrainSize, T, nt, nt, 3) -- abc
-print('First bit of target training data and labels:')
-print(x[{ {1, 5}, {} }])
-print(y[{ {1, 5} }])
-
-
-for itr = 1, targetTrainSize - T, T do
-   local xSeq = x:narrow(1, itr, T)
-   local ySeq = y:narrow(1, itr, T)
-
-   local feval = function()
-      --------------------------------------------------------------------------------
-      -- Forward Pass
-      --------------------------------------------------------------------------------
-      model:training()       -- Model in training mode
-
-      -- Input to the model is table of tables
-      -- {x_seq, h1, h2, ..., h_nHL}
-      local states = model:forward({xSeq, table.unpack(h)})
-      -- States is the output returned from the selected models
-      -- Contains predictions + tables of hidden layers
-      -- {{y}, {h}}
-
-      -- Store predictions
-      local prediction = table2Tensor(states)
-
-      local err = criterion:forward(prediction, ySeq)
-      --------------------------------------------------------------------------------
-      -- Backward Pass
-      --------------------------------------------------------------------------------
-      local dE_dh = criterion:backward(prediction, ySeq)
-
-      -- convert dE_dh into table and assign Zero for states
-      local m = mode == 'FW' and 2 or 1
-      local dE_dhTable = tensor2Table(dE_dh, m*nHL)
-
-      model:zeroGradParameters()
-      model:backward({xSeq, table.unpack(h)}, dE_dhTable)
-
-      -- Store final output states
-      for l = 1, nHL do h[l] = states[l + T] end
-      if mode == 'FW' then for l = nHL+1, 2*nHL do h[l] = states[l + T] end end
-
-      return err, dE_dw
-   end
-
-   local err
-   w, err = optim.rmsprop(feval, w, optimState)
-   trainError = trainError + err[1]
-
-   if itr % (trainSize/(10*T)) == 1 then
-      print(string.format("Iteration %8d, Training Error/seq_len = %4.4f, gradnorm = %4.4e",
-         itr, err[1] / T, dE_dw:norm()))
-   end
-end
-
 trainError = trainError/trainSize
 local trainTime = timer:time().real
 
@@ -250,7 +182,7 @@ prototype:evaluate()
 --------------------------------------------------------------------------------
 -- Testing
 --------------------------------------------------------------------------------
-x, y = data.getData(testSize, T, nt, nt, 3) -- abc
+x, y = data.getData(testSize, T, nt, nt)
 print('First bit of testing data and labels:')
 print(x[{ {1, 30}, {} }])
 print(y[{ {1, 30} }])

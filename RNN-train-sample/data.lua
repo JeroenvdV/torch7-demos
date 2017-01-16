@@ -1,14 +1,14 @@
 local data = {}
 
-function data.getData(trainSize, seqLength)
-   -- Generate random sequence of 1s and 2s
-   local s = torch.Tensor(trainSize):random(2)
+function data.getData(trainSize, seqLength, n, nt, lt)
+   -- Generate random sequence of n different possible values
+   local s = torch.Tensor(trainSize):random(n)
 
    -- Labels for training
    local y = torch.ones(trainSize)
 
    for i = seqLength, trainSize do
-      if s[i-3] == 1 and s[i-2] == 2 and s[i-1] == 2 and s[i] == 1 then
+      if s[i-2] == 1 and s[i-1] == 2 and s[i] == lt then
          y[i] = 2
       end
    end
@@ -16,13 +16,14 @@ function data.getData(trainSize, seqLength)
    -- Mapping of input from R trainSize to trainSize x 2
    -- a => 1 => <1, 0>
    -- b => 2 => <0, 1>
+   -- (one hot encoding)
 
-   local x = torch.zeros(trainSize, 2)
+   local x = torch.zeros(trainSize, nt) -- leave space for target alphabet size
    for i = 1, trainSize do
-      if s[i] == 1 then
-         x[i][1] = 1
-      else
-         x[i][2] = 1
+      for j = 1, n do
+         if s[i] == j then
+            x[i][j] = 1
+         end
       end
    end
    return x, y
