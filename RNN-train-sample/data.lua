@@ -8,7 +8,12 @@ function data.getData(trainSize, seqLength, n, nt, lt)
    local y = torch.ones(trainSize)
 
    for i = seqLength, trainSize do
-      if s[i-2] == 1 and s[i-1] == 2 and s[i] == lt then
+      if          s[i-5] == 1
+              and s[i-4] == 7
+              and s[i-3] == 3
+              and s[i-2] == 5
+              and s[i-1] == 5
+              and s[i] == lt then
          y[i] = 2
       end
    end
